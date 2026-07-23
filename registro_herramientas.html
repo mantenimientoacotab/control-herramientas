@@ -1,0 +1,225 @@
+<div id="app">
+  <h2 style="margin: 0 0 4px;">Formato de salida de herramientas</h2>
+  <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 1.5rem;">Registro compartido — visible para todo el equipo que use este enlace.</p>
+
+  <div id="form-card" style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem;">
+    <h3 style="margin: 0 0 12px;">Registrar salida</h3>
+    <div id="form-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nombre del técnico</label>
+        <input id="f-tecnico" type="text" placeholder="Ej. Juan Pérez" style="width: 100%;" />
+      </div>
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Área / trabajo</label>
+        <input id="f-area" type="text" placeholder="Ej. Compresores" style="width: 100%;" />
+      </div>
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Código herramienta</label>
+        <input id="f-codigo" type="text" placeholder="Ej. HT-014" style="width: 100%;" />
+      </div>
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Descripción</label>
+        <input id="f-descripcion" type="text" placeholder="Ej. Llave de torque" style="width: 100%;" />
+      </div>
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Cantidad</label>
+        <input id="f-cantidad" type="number" min="1" value="1" style="width: 100%;" />
+      </div>
+      <div>
+        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Firma técnico</label>
+        <input id="f-firmatecnico" type="text" placeholder="Nombre como firma" style="width: 100%;" />
+      </div>
+    </div>
+    <div style="margin: 14px 0;">
+      <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Estado al salir</label>
+      <label style="margin-right: 16px; font-size: 14px;"><input type="radio" name="estadoSalida" value="Bueno" checked /> Bueno</label>
+      <label style="font-size: 14px;"><input type="radio" name="estadoSalida" value="Regular" /> Regular</label>
+    </div>
+    <div id="form-error" style="color: var(--text-danger); font-size: 13px; min-height: 16px; margin-bottom: 8px;"></div>
+    <button id="btn-registrar" style="font-weight: 500;"><i class="ti ti-plus" style="font-size:16px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Registrar salida</button>
+  </div>
+
+  <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+    <input id="f-search" type="text" placeholder="Buscar por técnico, código o área..." style="flex: 1; min-width: 200px;" />
+    <select id="f-filtro-estado" style="width: auto;">
+      <option value="todos">Todos</option>
+      <option value="pendiente">Pendientes</option>
+      <option value="devuelto">Devueltos</option>
+    </select>
+    <button id="btn-export"><i class="ti ti-download" style="font-size:16px; vertical-align:-2px; margin-right:4px;" aria-hidden="true"></i>Exportar CSV</button>
+  </div>
+
+  <div id="loading" style="font-size: 13px; color: var(--text-secondary); padding: 1rem 0;">Cargando registros...</div>
+  <div id="table-wrap" style="overflow-x: auto; display: none;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="border-bottom: 0.5px solid var(--border-strong);">
+          <th style="text-align: left; padding: 8px 6px;">N.º</th>
+          <th style="text-align: left; padding: 8px 6px;">Fecha/hora salida</th>
+          <th style="text-align: left; padding: 8px 6px;">Técnico</th>
+          <th style="text-align: left; padding: 8px 6px;">Área</th>
+          <th style="text-align: left; padding: 8px 6px;">Código</th>
+          <th style="text-align: left; padding: 8px 6px;">Descripción</th>
+          <th style="text-align: left; padding: 8px 6px;">Cant.</th>
+          <th style="text-align: left; padding: 8px 6px;">Estado salida</th>
+          <th style="text-align: left; padding: 8px 6px;">Devolución</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <p id="empty-msg" style="display: none; font-size: 13px; color: var(--text-secondary);">Todavía no hay registros. Completa el formulario de arriba para agregar el primero.</p>
+</div>
+
+<script>
+const STORAGE_KEY = 'herramientas:registros';
+let records = [];
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function nowDate() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function nowTime() { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+async function loadRecords() {
+  try {
+    const res = await window.storage.get(STORAGE_KEY, true);
+    records = res ? JSON.parse(res.value) : [];
+  } catch (e) {
+    records = [];
+  }
+  document.getElementById('loading').style.display = 'none';
+  render();
+}
+
+async function saveRecords() {
+  try {
+    await window.storage.set(STORAGE_KEY, JSON.stringify(records), true);
+  } catch (e) {
+    console.error('No se pudo guardar', e);
+  }
+}
+
+function badge(text, colorClass) {
+  const colors = {
+    warning: ['var(--bg-warning)', 'var(--text-warning)'],
+    success: ['var(--bg-success)', 'var(--text-success)'],
+    danger: ['var(--bg-danger)', 'var(--text-danger)']
+  };
+  const [bg, fg] = colors[colorClass] || colors.warning;
+  return `<span style="background:${bg}; color:${fg}; font-size:12px; padding:3px 10px; border-radius:var(--radius); white-space:nowrap;">${text}</span>`;
+}
+
+function render() {
+  const tbody = document.getElementById('tbody');
+  const search = document.getElementById('f-search').value.toLowerCase().trim();
+  const filtro = document.getElementById('f-filtro-estado').value;
+
+  const filtered = records.filter(r => {
+    const matchesSearch = !search || [r.tecnico, r.codigo, r.area, r.descripcion].join(' ').toLowerCase().includes(search);
+    const matchesFiltro = filtro === 'todos' || (filtro === 'pendiente' && !r.devuelto) || (filtro === 'devuelto' && r.devuelto);
+    return matchesSearch && matchesFiltro;
+  });
+
+  document.getElementById('table-wrap').style.display = records.length ? 'block' : 'none';
+  document.getElementById('empty-msg').style.display = records.length ? 'none' : 'block';
+
+  tbody.innerHTML = filtered.map((r, idx) => {
+    const devolucionCell = r.devuelto
+      ? `${r.fechaDevolucion} ${r.horaDevolucion}<br>${badge(r.estadoDevolucion, r.estadoDevolucion === 'Dañado' ? 'danger' : 'success')}<br><span style="color:var(--text-secondary)">Firma: ${r.firmaEncargado || '-'}</span>`
+      : `<button data-devolver="${r.id}" style="font-size:12px; padding: 4px 10px;">Registrar devolución</button>`;
+
+    return `<tr style="border-bottom: 0.5px solid var(--border);">
+      <td style="padding: 8px 6px;">${r.numero}</td>
+      <td style="padding: 8px 6px;">${r.fechaSalida}<br>${r.horaSalida}</td>
+      <td style="padding: 8px 6px;">${r.tecnico}</td>
+      <td style="padding: 8px 6px;">${r.area}</td>
+      <td style="padding: 8px 6px;">${r.codigo}</td>
+      <td style="padding: 8px 6px;">${r.descripcion}</td>
+      <td style="padding: 8px 6px;">${r.cantidad}</td>
+      <td style="padding: 8px 6px;">${badge(r.estadoSalida, r.estadoSalida === 'Regular' ? 'warning' : 'success')}</td>
+      <td style="padding: 8px 6px;">${devolucionCell}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('[data-devolver]').forEach(btn => {
+    btn.addEventListener('click', () => openDevolucion(btn.getAttribute('data-devolver')));
+  });
+}
+
+function openDevolucion(id) {
+  const estado = prompt('Estado al devolver: escribe Bueno, Regular o Dañado');
+  if (!estado || !['Bueno', 'Regular', 'Dañado'].includes(estado.trim())) {
+    if (estado !== null) alert('Escribe exactamente: Bueno, Regular o Dañado');
+    return;
+  }
+  const firma = prompt('Firma encargado (nombre)') || '';
+  const record = records.find(r => r.id === id);
+  if (!record) return;
+  record.devuelto = true;
+  record.fechaDevolucion = nowDate();
+  record.horaDevolucion = nowTime();
+  record.estadoDevolucion = estado.trim();
+  record.firmaEncargado = firma;
+  saveRecords();
+  render();
+}
+
+document.getElementById('btn-registrar').addEventListener('click', async () => {
+  const tecnico = document.getElementById('f-tecnico').value.trim();
+  const area = document.getElementById('f-area').value.trim();
+  const codigo = document.getElementById('f-codigo').value.trim();
+  const descripcion = document.getElementById('f-descripcion').value.trim();
+  const cantidad = document.getElementById('f-cantidad').value;
+  const firmaTecnico = document.getElementById('f-firmatecnico').value.trim();
+  const estadoSalida = document.querySelector('input[name="estadoSalida"]:checked').value;
+  const errorEl = document.getElementById('form-error');
+
+  if (!tecnico || !area || !codigo || !descripcion || !cantidad || Number(cantidad) < 1) {
+    errorEl.textContent = 'Completa técnico, área, código, descripción y una cantidad válida.';
+    return;
+  }
+  errorEl.textContent = '';
+
+  const record = {
+    id: Date.now().toString(),
+    numero: records.length + 1,
+    fechaSalida: nowDate(),
+    horaSalida: nowTime(),
+    tecnico, area, codigo, descripcion,
+    cantidad: Number(cantidad),
+    estadoSalida,
+    firmaTecnico,
+    devuelto: false,
+    fechaDevolucion: '', horaDevolucion: '', estadoDevolucion: '', firmaEncargado: ''
+  };
+  records.push(record);
+  await saveRecords();
+
+  document.getElementById('f-tecnico').value = '';
+  document.getElementById('f-area').value = '';
+  document.getElementById('f-codigo').value = '';
+  document.getElementById('f-descripcion').value = '';
+  document.getElementById('f-cantidad').value = '1';
+  document.getElementById('f-firmatecnico').value = '';
+  document.querySelector('input[name="estadoSalida"][value="Bueno"]').checked = true;
+
+  render();
+});
+
+document.getElementById('f-search').addEventListener('input', render);
+document.getElementById('f-filtro-estado').addEventListener('change', render);
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  const headers = ['N.º','Fecha salida','Hora salida','Técnico','Área','Código','Descripción','Cantidad','Estado salida','Fecha devolución','Hora devolución','Estado devolución','Firma técnico','Firma encargado'];
+  const rows = records.map(r => [r.numero, r.fechaSalida, r.horaSalida, r.tecnico, r.area, r.codigo, r.descripcion, r.cantidad, r.estadoSalida, r.fechaDevolucion, r.horaDevolucion, r.estadoDevolucion, r.firmaTecnico, r.firmaEncargado]);
+  const csv = [headers, ...rows].map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'registro_herramientas.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+loadRecords();
+</script>
